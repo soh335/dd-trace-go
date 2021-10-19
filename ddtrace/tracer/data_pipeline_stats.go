@@ -39,14 +39,10 @@ type bucket map[uint64]pipelineStatsGroup
 func (b bucket) Export() []groupedPipelineStats {
 	stats := make([]groupedPipelineStats, 0, len(b))
 	for _, s := range b {
-		// todo[piochelepiotr] Used optimized ddsketch.
-		summary, err := proto.Marshal(s.sketch.ToProto())
-		if err != nil {
-			log.Error("Failed to serialize sketch with err:%v", err)
-			continue
-		}
+		var sketch []byte
+		s.sketch.Encode(&sketch, false)
 		stats = append(stats, groupedPipelineStats{
-			Summary: summary,
+			Summary: sketch,
 			Service: s.service,
 			ReceivingPipelineName: s.receivingPipelineName,
 			PipelineHash: s.pipelineHash,
@@ -169,13 +165,9 @@ func (c *pipelineConcentrator) runFlusher(tick <-chan time.Time) {
 		select {
 		case now := <-tick:
 			p := c.flush(now)
-			c.send(p)
-			// if err := c.cfg.transport.sendPipelineStats(&p); err != nil {
-		// 		c.statsd().Incr("datadog.tracer.pipeline_stats.flush_errors", nil, 1)
-		// 		log.Error("Error sending pipeline stats payload: %v", err)
-		// 	}
+			c.sendToAgent(p)
 		case <-c.stop:
-			c.send(c.flushAll())
+			c.sendToAgent(c.flushAll())
 			return
 		}
 	}
@@ -221,6 +213,7 @@ func (c *pipelineConcentrator) send(p pipelineStatsPayload) {
 }
 
 func (c *pipelineConcentrator) sendToAgent(p pipelineStatsPayload) {
+	log.Info("sending payload to agent")
 	if len(p.Stats) == 0 {
 		// nothing to flush
 		return
@@ -231,18 +224,23 @@ func (c *pipelineConcentrator) sendToAgent(p pipelineStatsPayload) {
 
 	for _, bucket := range p.Stats {
 		for _, s := range bucket.Stats {
-			sketch.ForEach(func(value, count float64) bool {
-				tags := []string{
+			payload := distributionPayload{
+				Name: "dd.pipeline",
+				Tags: []string{
 					"pipeline_name:"+s.ReceivingPipelineName,
 					"service:"+s.Service,
 					fmt.Sprintf("pipeline_hash:%d", s.PipelineHash),
 					fmt.Sprintf("parent_hash:%d", s.ParentHash),
-				}
-				for i := 0; i < int(count); i++ {
-					c.statsd().Distribution("dd.pipeline", value, tags, 1)
-				}
-				return false
-			})
+				},
+				Timestamp: float64(time.Unix(0, int64(bucket.Start)).Unix()),
+				Sketch: s.Summary,
+			}
+			if err := c.cfg.transport.sendPipelineStats(&payload); err != nil {
+				log.Info("failed to send point")
+				c.statsd().Incr("datadog.tracer.pipeline_stats.flush_errors", nil, 1)
+				log.Error("Error sending pipeline stats payload: %v", err)
+			}
+			log.Info("send a point to the agent")
 		}
 	}
 }

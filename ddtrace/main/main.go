@@ -29,6 +29,7 @@ func main() {
 		atomic.AddInt64(&i, 1)
 		_, ctx = tracer.SetDataPipelineCheckpointFromContext(ctx, "queue")
 		dataPipeline, ok := tracer.DataPipelineFromContext(ctx)
+		time.Sleep(time.Millisecond*100)
 		if ok {
 			if baggage, err := dataPipeline.ToBaggage(); err == nil {
 				convertedContext := context.Background()

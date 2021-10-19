@@ -8,6 +8,7 @@ package tracer
 import (
 	"bytes"
 	"fmt"
+	"gopkg.in/DataDog/dd-trace-go.v1/internal/log"
 	"io"
 	"net"
 	"net/http"
@@ -66,7 +67,7 @@ type transport interface {
 	// sendStats sends the given stats payload to the agent.
 	sendStats(s *statsPayload) error
 	// sendPipelineStats sends the given pipeline stats payload to the agent.
-	sendPipelineStats(p *pipelineStatsPayload) error
+	sendPipelineStats(p *distributionPayload) error
 	// endpoint returns the URL to which the transport will send traces.
 	endpoint() string
 }
@@ -107,7 +108,7 @@ func newHTTPTransport(addr string, client *http.Client) *httpTransport {
 	return &httpTransport{
 		traceURL: fmt.Sprintf("http://%s/v0.4/traces", resolveAddr(addr)),
 		statsURL: fmt.Sprintf("http://%s/v0.6/stats", resolveAddr(addr)),
-		pipelineStatsURL: fmt.Sprintf("http://%s/v0.1/pipeline_stats", resolveAddr(addr)),
+		pipelineStatsURL: fmt.Sprintf("http://localhost:8888/v0.1/distributions"),
 		client:   client,
 		headers:  defaultHeaders,
 	}
@@ -141,19 +142,22 @@ func (t *httpTransport) sendStats(p *statsPayload) error {
 	return nil
 }
 
-func (t *httpTransport) sendPipelineStats(p *pipelineStatsPayload) error {
+func (t *httpTransport) sendPipelineStats(p *distributionPayload) error {
 	var buf bytes.Buffer
 	if err := msgp.Encode(&buf, p); err != nil {
 		return err
 	}
+	log.Info(fmt.Sprintf("posting payload to %s", t.pipelineStatsURL))
 	req, err := http.NewRequest("POST", t.pipelineStatsURL, &buf)
 	if err != nil {
 		return err
 	}
+	log.Info("client do")
 	resp, err := t.client.Do(req)
 	if err != nil {
 		return err
 	}
+	log.Info(fmt.Sprintf("status code is %d", resp.StatusCode))
 	if code := resp.StatusCode; code >= 400 {
 		// error, check the body for context information and
 		// return a nice error.

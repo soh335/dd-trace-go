@@ -16,7 +16,6 @@ func main() {
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
-	ctx := context.Background()
 	tracer.Start(tracer.WithService("piotr-test-service"))
 	defer tracer.Stop()
 	i := int64(0)
@@ -26,6 +25,7 @@ func main() {
 		}
 	}()
 	for {
+		ctx := context.Background()
 		atomic.AddInt64(&i, 1)
 		_, ctx = tracer.SetDataPipelineCheckpointFromContext(ctx, "queue")
 		dataPipeline, ok := tracer.DataPipelineFromContext(ctx)

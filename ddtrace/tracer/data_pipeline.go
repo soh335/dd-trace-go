@@ -3,7 +3,6 @@ package tracer
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/spaolacci/murmur3"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
@@ -39,9 +38,6 @@ func (p *dataPipeline) ToBaggage() ([]byte, error) {
 	data := make([]byte, 8)
 	binary.LittleEndian.PutUint64(data, p.pipelineHash)
 	encoding.EncodeVarint64(&data, p.callTime.UnixNano()/int64(time.Millisecond))
-	if tracer, ok := internal.GetGlobalTracer().(*tracer); ok {
-		tracer.config.statsd.Distribution("datadog.tracer.baggage_size", float64(len(data)), []string{fmt.Sprintf("service:%s", p.service)}, 1)
-	}
 	return data, nil
 }
 

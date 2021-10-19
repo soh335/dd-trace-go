@@ -56,6 +56,10 @@ func (b bucket) Export() []groupedPipelineStats {
 	return stats
 }
 
+type pipelineConcentratorStats struct {
+	payloadsIn int64
+}
+
 type pipelineConcentrator struct {
 	In chan pipelineStatsPoint
 
@@ -67,6 +71,7 @@ type pipelineConcentrator struct {
 	stopped uint64
 	stop       chan struct{}  // closing this channel triggers shutdown
 	cfg        *config        // tracer startup configuration
+	stats pipelineConcentratorStats
 }
 
 func newPipelineConcentrator(c *config, bucketDuration time.Duration) *pipelineConcentrator {
@@ -108,7 +113,7 @@ func (c *pipelineConcentrator) runIngester() {
 	for {
 		select {
 		case s := <-c.In:
-			c.statsd().Incr("datadog.tracer.stats.spans_in", nil, 1)
+			atomic.AddInt64(&c.stats.payloadsIn, 1)
 			c.add(s)
 		case <-c.stop:
 			return
@@ -153,6 +158,12 @@ func (c *pipelineConcentrator) Stop() {
 	c.wg.Wait()
 }
 
+func (c *pipelineConcentrator) reportStats() {
+	for range time.NewTicker(time.Second*10).C {
+		c.statsd().Count("datadog.tracer.pipeline_stats.payloads_in", atomic.SwapInt64(&c.stats.payloadsIn, 0), nil, 1)
+	}
+}
+
 func (c *pipelineConcentrator) runFlusher(tick <-chan time.Time) {
 	for {
 		select {
@@ -193,6 +204,33 @@ func (c *pipelineConcentrator) send(p pipelineStatsPayload) {
 				continue
 			}
 			// todo[piochelepiotr] Flush all the sketch at once.
+			sketch.ForEach(func(value, count float64) bool {
+				tags := []string{
+					"pipeline_name:"+s.ReceivingPipelineName,
+					"service:"+s.Service,
+					fmt.Sprintf("pipeline_hash:%d", s.PipelineHash),
+					fmt.Sprintf("parent_hash:%d", s.ParentHash),
+				}
+				for i := 0; i < int(count); i++ {
+					c.statsd().Distribution("dd.pipeline", value, tags, 1)
+				}
+				return false
+			})
+		}
+	}
+}
+
+func (c *pipelineConcentrator) sendToAgent(p pipelineStatsPayload) {
+	if len(p.Stats) == 0 {
+		// nothing to flush
+		return
+	}
+	c.statsd().Incr("datadog.tracer.pipeline_stats.flush_payloads", nil, 1)
+	c.statsd().Incr("datadog.tracer.pipeline_stats.flush_buckets", nil, float64(len(p.Stats)))
+
+
+	for _, bucket := range p.Stats {
+		for _, s := range bucket.Stats {
 			sketch.ForEach(func(value, count float64) bool {
 				tags := []string{
 					"pipeline_name:"+s.ReceivingPipelineName,

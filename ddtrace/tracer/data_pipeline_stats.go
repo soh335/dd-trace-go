@@ -213,7 +213,6 @@ func (c *pipelineConcentrator) send(p pipelineStatsPayload) {
 }
 
 func (c *pipelineConcentrator) sendToAgent(p pipelineStatsPayload) {
-	log.Info("sending payload to agent")
 	if len(p.Stats) == 0 {
 		// nothing to flush
 		return
@@ -240,7 +239,6 @@ func (c *pipelineConcentrator) sendToAgent(p pipelineStatsPayload) {
 				c.statsd().Incr("datadog.tracer.pipeline_stats.flush_errors", nil, 1)
 				log.Error("Error sending pipeline stats payload: %v", err)
 			}
-			log.Info("send a point to the agent")
 		}
 	}
 }

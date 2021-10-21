@@ -8,7 +8,6 @@ package tracer
 import (
 	"bytes"
 	"fmt"
-	"gopkg.in/DataDog/dd-trace-go.v1/internal/log"
 	"io"
 	"net"
 	"net/http"
@@ -147,17 +146,14 @@ func (t *httpTransport) sendPipelineStats(p *distributionPayload) error {
 	if err := msgp.Encode(&buf, p); err != nil {
 		return err
 	}
-	log.Info(fmt.Sprintf("posting payload to %s", t.pipelineStatsURL))
 	req, err := http.NewRequest("POST", t.pipelineStatsURL, &buf)
 	if err != nil {
 		return err
 	}
-	log.Info("client do")
 	resp, err := t.client.Do(req)
 	if err != nil {
 		return err
 	}
-	log.Info(fmt.Sprintf("status code is %d", resp.StatusCode))
 	if code := resp.StatusCode; code >= 400 {
 		// error, check the body for context information and
 		// return a nice error.

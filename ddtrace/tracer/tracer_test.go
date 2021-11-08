@@ -1331,7 +1331,7 @@ type dummyTransport struct {
 	sync.RWMutex
 	traces spanLists
 	stats  []*statsPayload
-	pipelineStats  []*pipelineStatsPayload
+	pipelineStats  []*distributionPayload
 }
 
 func newDummyTransport() *dummyTransport {
@@ -1351,7 +1351,7 @@ func (t *dummyTransport) sendStats(p *statsPayload) error {
 	return nil
 }
 
-func (t *dummyTransport) sendPipelineStats(p *pipelineStatsPayload) error {
+func (t *dummyTransport) sendPipelineStats(p *distributionPayload) error {
 	t.Lock()
 	t.pipelineStats = append(t.pipelineStats, p)
 	t.Unlock()
